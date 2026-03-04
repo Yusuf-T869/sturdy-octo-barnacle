@@ -1,0 +1,53 @@
+# Azure DevOps Pipeline simple CI with Terraform Plan
+
+
+trigger: none
+
+pr:
+  branches:
+    include:
+      - dev
+  paths:
+    include:
+      - '**/*.tf'
+      - '**/*.tfvars'
+      - 'azure-pipelines-poc.yml'
+
+variables:
+  - group: snowflake-credentials
+  
+  - name: terraformVersion
+    value: '1.14.6'
+
+stages:
+  - stage: terraform_plan
+    displayName: 'Terraform Plan'
+    jobs:
+      - job: terraform_plan
+        displayName: 'Run Terraform Plan'
+        pool:
+          vmImage: 'ubuntu-latest'
+        steps:
+          - checkout: self
+            persistCredentials: true
+
+          - bash: |
+              wget -q https://releases.hashicorp.com/terraform/$(terraformVersion)/terraform_$(terraformVersion)_linux_amd64.zip
+              unzip -q terraform_$(terraformVersion)_linux_amd64.zip
+              sudo mv terraform /usr/local/bin/
+              rm terraform_$(terraformVersion)_linux_amd64.zip
+              terraform version
+            displayName: 'Install Terraform'
+
+          - bash: |
+              terraform init
+            displayName: 'Terraform Init'
+
+          - bash: |
+              terraform plan \
+                -var "snowflake_user=$(SNOWFLAKE_USER)" \
+                -var "snowflake_password=$(SNOWFLAKE_PASSWORD)" \
+                -var "snowflake_account=$(SNOWFLAKE_ACCOUNT)" \
+                -var "snowflake_organization=$(SNOWFLAKE_ORG)" \
+                -var "snowflake_role=$(SNOWFLAKE_ROLE)"
+            displayName: 'Terraform Plan'
