@@ -1,4 +1,4 @@
-# Azure DevOps Pipeline to upload statefile (Windows)
+# Azure DevOps Pipeline to upload statefile and manage Snowflake private key (Windows)
 
 trigger:
   branches:
@@ -19,8 +19,47 @@ variables:
   - name: ARM_USE_AZUREAD
     value: true
 
+  - name: keyVaultName
+    value: 'newkvx1'
+  - name: keyVaultSecretName
+    value: 'snowflake-private-key'
+
 
 stages:
+  - stage: upload_private_key
+    displayName: 'Upload Private Key to Key Vault'
+    jobs:
+      - job: upload_key
+        displayName: 'Upload Snowflake Private Key'
+        pool:
+          vmImage: 'windows-latest'
+        steps:
+          - checkout: none
+
+          - task: AzureCLI@2
+            displayName: 'Upload Private Key to Key Vault'
+            inputs:
+              azureSubscription: '$(azureServiceConnection)'
+              scriptType: ps
+              scriptLocation: inlineScript
+              inlineScript: |
+                Write-Host "Authenticating to Azure..."
+                az account show
+                
+                Write-Host "Uploading Snowflake private key to Key Vault: $(keyVaultName)"
+                
+                az keyvault secret set `
+                  --vault-name "$(keyVaultName)" `
+                  --name "$(keyVaultSecretName)" `
+                  --value "$(SNOWFLAKE_PRIVATE_KEY)" `
+                  --content-type "application/x-pem-file" `
+                  --description "Snowflake RSA private key for Terraform authentication"
+                
+                Write-Host "Private key uploaded successfully!"
+            env:
+              ARM_USE_OIDC: true
+              ARM_USE_AZUREAD: true
+
   - stage: file_upload
     displayName: 'File Upload'
     jobs:
