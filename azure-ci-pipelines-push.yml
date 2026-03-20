@@ -40,6 +40,7 @@ stages:
               scriptLocation: inlineScript
               inlineScript: |
                 echo "Authenticated via OIDC"
+                curl -sL https://aka.ms/InstallAzureCLIDeb | bash
                 az account show
                 az storage blob upload --container-name $(TF_STATE_CONTAINER) --name terraform.tfstate --file terraform.tfstate --account-name $(TF_STATE_STORAGE) --auth-mode login
                 az storage blob list --container-name $(TF_STATE_CONTAINER) --account-name $(TF_STATE_STORAGE) --output table --auth-mode login
