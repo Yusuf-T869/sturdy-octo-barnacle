@@ -1,0 +1,99 @@
+---
+
+trigger:
+  branches:
+    include:
+      - file-upload
+
+variables:
+  - group: snowflake-credentials
+  
+  - name: terraformVersion
+    value: '1.14.6'
+
+  - name: azureServiceConnection
+    value: 'tf-ci/cd'
+  
+  - name: ARM_USE_OIDC
+    value: true
+  - name: ARM_USE_AZUREAD
+    value: true
+
+  - name: keyVaultName
+    value: 'newkvx1'
+  - name: keyVaultSecretName
+    value: 'snowflake-private-key'
+
+
+stages:
+  - stage: test_snowflake_connection
+    displayName: 'Test Snowflake Connection'
+    jobs:
+      - job: test_connection
+        displayName: 'Test Snowflake Connection with Private Key'
+        pool:
+          vmImage: 'ubuntu-latest'
+        steps:
+          - checkout: self
+
+          - bash: |
+              wget -q https://releases.hashicorp.com/terraform/$(terraformVersion)/terraform_$(terraformVersion)_linux_amd64.zip
+              unzip -q terraform_$(terraformVersion)_linux_amd64.zip
+              sudo mv terraform /usr/local/bin/
+              rm terraform_$(terraformVersion)_linux_amd64.zip
+              terraform version
+            displayName: 'Install Terraform'
+
+          - task: AzureKeyVault@2
+            displayName: 'Retrieve Private Key from Key Vault'
+            inputs:
+              azureSubscription: '$(azureServiceConnection)'
+              KeyVaultName: '$(keyVaultName)'
+              SecretsFilter: '$(keyVaultSecretName)'
+              RunAsPreJob: false
+
+          - bash: |
+              echo "Extracting and converting private key..."
+              echo '$(snowflake-private-key)' | sed 's/.*BEGIN PRIVATE KEY-----//;s/-----END PRIVATE KEY.*//' | tr -d ' \n' | base64 -d | openssl pkcs8 -topk8 -nocrypt > ./snowflake-private-key.pem
+              chmod 600 ./snowflake-private-key.pem
+              head -2 ./snowflake-private-key.pem
+            displayName: 'Write Private Key to File'
+
+          - bash: |
+              echo "Renaming providers.tf to disable default provider config..."
+              mv providers.tf providers.tf.bak
+              ls -la providers.tf*
+            displayName: 'Disable Default Providers'
+
+          - bash: |
+              cat > backend.tf << 'EOF'
+              terraform {
+                backend "azurerm" {
+                  use_oidc             = true
+                  use_azuread_auth     = true
+                  storage_account_name = "$(TF_STATE_STORAGE)"
+                  container_name       = "$(TF_STATE_CONTAINER)"
+                  key                  = "terraform.tfstate"
+                }
+              }
+              EOF
+            displayName: 'Configure Terraform Backend (Storage)'
+
+          - task: AzureCLI@2
+            displayName: 'Init and Validate Snowflake Provider'
+            inputs:
+              azureSubscription: '$(azureServiceConnection)'
+              scriptType: bash
+              scriptLocation: inlineScript
+              inlineScript: |
+                echo "Initializing Terraform with Snowflake provider..."
+                terraform init
+
+                echo "Listing resources in state file..."
+                terraform state list
+
+                echo "Testing Snowflake provider connection..."
+                terraform plan -var "snowflake_user=$(SNOWFLAKE_USER)" -var "snowflake_account=$(SNOWFLAKE_ACCOUNT)" -var "snowflake_organization=$(SNOWFLAKE_ORG)" -var "snowflake_role=$(SNOWFLAKE_ROLE)" -var "snowflake_private_key_path=./snowflake-private-key.pem"
+            env:
+              ARM_USE_OIDC: true
+              ARM_USE_AZUREAD: true
