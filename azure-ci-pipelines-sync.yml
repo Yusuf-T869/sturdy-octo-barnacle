@@ -60,12 +60,6 @@ stages:
             displayName: 'Write Private Key to File'
 
           - bash: |
-              echo "Renaming providers.tf to disable default provider config..."
-              mv providers.tf providers.tf.bak
-              ls -la providers.tf*
-            displayName: 'Disable Default Providers'
-
-          - bash: |
               cat > backend.tf << 'EOF'
               terraform {
                 backend "azurerm" {
@@ -93,7 +87,7 @@ stages:
                 terraform state list
 
                 echo "Testing Snowflake provider connection..."
-                terraform plan -var "snowflake_user=$(SNOWFLAKE_USER)" -var "snowflake_account=$(SNOWFLAKE_ACCOUNT)" -var "snowflake_organization=$(SNOWFLAKE_ORG)" -var "snowflake_role=$(SNOWFLAKE_ROLE)" -var "snowflake_private_key_path=./snowflake-private-key.pem"
+                terraform plan -var "snowflake_user=$(SNOWFLAKE_USER)" -var "snowflake_account=$(SNOWFLAKE_ACCOUNT)" -var "snowflake_organization=$(SNOWFLAKE_ORG)" -var "snowflake_role=$(SNOWFLAKE_ROLE)" -var "use_remote_auth=true" -var "snowflake_private_key_path=./snowflake-private-key.pem"
             env:
               ARM_USE_OIDC: true
               ARM_USE_AZUREAD: true
