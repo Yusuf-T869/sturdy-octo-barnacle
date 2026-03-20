@@ -1,2 +1,2 @@
 az keyvault secret list --vault-name $(keyVaultName)
-az role assignment list --assignee "$(MANAGED_IDENTTIT_CLIENT_ID)" --all --include-groups
+az role assignment list --assignee "$(MANAGED_IDENTITY_CLIENT_ID)" --all --include-groups
