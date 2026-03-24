@@ -1,0 +1,101 @@
+trigger:
+  branches:
+    include:
+      - main # Triggers when a Pull Request is completed
+
+variables:
+  - group: snowflake-dbt
+
+schedules:
+  - cron: "0 * * * *"
+    displayName: Production dbt Build every hour
+    branches:
+      include:
+        - feature/hubspot-cd
+
+pool:
+  vmImage: "ubuntu-latest"
+
+steps:
+  - task: UsePythonVersion@0
+    inputs:
+    versionSpec: "3.11"
+    displayName: "Set up Python 3.11"
+
+  - script: |
+      python -m pip install --upgrade pip
+      pip install dbt-snowflake
+    displayName: "Install dbt and snowflake adapter"
+  - script: |
+      mkdir -p ~/.dbt
+      cat << 'EOF' > ~/.dbt/profiles.yml
+      hubspot_marketing_analytics_bronze_staging:
+        target: prod
+        outputs:
+          prod:
+            type: snowflake
+            account: "{{ env_var('SNOWFLAKE_ACCOUNT') }}"
+            user: "{{ env_var('SNOWFLAKE_USER') }}"
+            password: "{{ env_var('SNOWFLAKE_PASSWORD') }}"
+            role: "{{ env_var('SNOWFLAKE_ROLE') }}"
+            database: MARKETING_DB
+            warehouse: "{{ env_var('SNOWFLAKE_WAREHOUSE') }}"
+            schema: BRONZE_STAGING
+            threads: 4
+            client_session_keep_alive: False
+      EOF
+    displayName: "Dynamically generate profiles.yml"
+  - script: |
+      echo "=== Current directory ==="
+      pwd
+      echo "=== List root ==="
+      ls -R .
+    displayName: "Debug repo structure"
+
+  - script: |
+      dbt deps
+    workingDirectory: "Marketing_Analytics/hubspot_marketing_analytics"
+    displayName: "dbt deps (Install Packages)"
+    env:
+      SNOWFLAKE_ACCOUNT: $(SNOWFLAKE_ACCOUNT)
+      SNOWFLAKE_USER: $(SNOWFLAKE_USER)
+      SNOWFLAKE_PASSWORD: $(SNOWFLAKE_PASSWORD)
+      SNOWFLAKE_ROLE: $(SNOWFLAKE_ROLE)
+      SNOWFLAKE_WAREHOUSE: $(SNOWFLAKE_WAREHOUSE)
+
+  - script: |
+      dbt run --target prod
+    workingDirectory: "Marketing_Analytics/hubspot_marketing_analytics"
+    displayName: "Run and Test Production Pipeline"
+    env:
+      SNOWFLAKE_ACCOUNT: $(SNOWFLAKE_ACCOUNT)
+      SNOWFLAKE_USER: $(SNOWFLAKE_USER)
+      SNOWFLAKE_PASSWORD: $(SNOWFLAKE_PASSWORD)
+      SNOWFLAKE_ROLE: $(SNOWFLAKE_ROLE)
+      SNOWFLAKE_WH: $(SNOWFLAKE_WAREHOUSE)
+
+  - script: |
+      dbt test --target prod
+    displayName: "dbt test (Run Data Quality Checks)"
+    workingDirectory: "Marketing_Analytics/hubspot_marketing_analytics"
+    env:
+      SNOWFLAKE_ACCOUNT: $(SNOWFLAKE_ACCOUNT)
+    SNOWFLAKE_USER: $(SNOWFLAKE_USER)
+    SNOWFLAKE_PASSWORD: $(SNOWFLAKE_PASSWORD)
+    SNOWFLAKE_ROLE: $(SNOWFLAKE_ROLE)
+    SNOWFLAKE_WAREHOUSE: $(SNOWFLAKE_WAREHOUSE)
+
+  - script: |
+      dbt docs generate --target prod
+    workingDirectory: "Marketing_Analytics/hubspot_marketing_analytics"
+    displayName: "dbt docs (Generate Documentation)"
+    env:
+      SNOWFLAKE_ACCOUNT: $(SNOWFLAKE_ACCOUNT)
+      SNOWFLAKE_USER: $(SNOWFLAKE_USER)
+      SNOWFLAKE_PASSWORD: $(SNOWFLAKE_PASSWORD)
+      SNOWFLAKE_ROLE: $(SNOWFLAKE_ROLE)
+      SNOWFLAKE_WAREHOUSE: $(SNOWFLAKE_WAREHOUSE)
+
+  - publish: "Marketing_Analytics/hubspot_marketing_analytics/target/"
+    artifact: "dbt-documentation"
+    displayName: "Publish dbt Docs as Pipeline Artifact"
