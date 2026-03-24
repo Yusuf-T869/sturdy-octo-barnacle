@@ -54,7 +54,7 @@ stages:
 
           - bash: |
               echo "Extracting and converting private key..."
-              echo '$(snowflake-private-key)' | sed 's/.*BEGIN PRIVATE KEY-----//;s/-----END PRIVATE KEY.*//' | tr -d ' \n' | base64 -d | openssl pkcs8 -topk8 -nocrypt > ./snowflake-private-key.pem
+              echo '$(snowflake-private-key)' | sed 's/.*BEGIN \(RSA \)\?PRIVATE KEY-----//;s/-----END \(RSA \)\?PRIVATE KEY.*//' | tr -d ' \n' | base64 -d | openssl pkcs8 -topk8 -nocrypt > ./snowflake-private-key.pem
               chmod 600 ./snowflake-private-key.pem
               head -2 ./snowflake-private-key.pem
             displayName: 'Write Private Key to File'
