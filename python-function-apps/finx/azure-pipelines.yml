@@ -1,0 +1,52 @@
+trigger:
+  branches:
+    include:
+      - main
+      - dev
+      - functiondeploy
+  paths:
+    include:
+      - "python-function-apps/finx/**"
+
+variables:
+  - name: azureServiceConnection
+    value: "tf-ci/cd"
+  - name: functionAppName
+    value: "finx-func"
+  - name: resourceGroup
+    value: "terraform-state-rg"
+  - name: functionZipFileName
+    value: finx-trigger-function.zip
+  - name: functionDir
+    value: python-function-apps/finx
+
+stages:
+  - stage: Upload_Function_Code_to_Function_Apps
+    displayName: "Upload Function Code to Function Apps"
+    jobs:
+      - job: deploy_function_1
+        displayName: "Package & Deploy Function App"
+        pool:
+          vmImage: "ubuntu-latest"
+        steps:
+          - checkout: self
+            fetchDepth: "1"
+
+          - bash: |
+              cd $(functionDir)
+              zip -r $(Build.ArtifactStagingDirectory)/$(functionZipFileName) . -x ".git/*" ".vscode/*" "__pycache__/*" "*.pyc" "local.settings.json"
+            displayName: "Package function app as zip"
+
+          - task: AzureCLI@2
+            displayName: "Deploy to Azure Functions"
+            inputs:
+              azureSubscription: "$(azureServiceConnection)"
+              scriptType: bash
+              scriptLocation: inlineScript
+              workingDirectory: "$(Build.ArtifactStagingDirectory)"
+              inlineScript: |
+                az functionapp deployment source config-zip \
+                  --name $(functionAppName) \
+                  --resource-group "$(resourceGroup)" \
+                  --src $(functionZipFileName) \
+                  --build-remote true
