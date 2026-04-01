@@ -186,6 +186,16 @@ def get_tfvar(file_path, var_name):
                 return match.group(1)
     return None
 
+def schema_file_prefix(schema_name):
+    """
+    Build a filesystem-friendly filename prefix from the schema name.
+
+    This keeps the generated files tied to the schema while avoiding spaces
+    and other characters that make shell usage awkward.
+    """
+    prefix = re.sub(r'[^A-Za-z0-9_.-]+', '_', schema_name).strip('_')
+    return prefix or "schema"
+
 def main():
     # Find project root by walking up from this script until we find terraform.tfvars.
     # This works whether the script lives in scripts/, scripts/test/, or the root itself.
@@ -290,8 +300,9 @@ def main():
         ("dynamic_tables", "snowflake_dynamic_table")
     ]
     
-    imports_tf_path = "imports.tf"
-    generated_tf_path = "generated_resources.tf"
+    filename_prefix = schema_file_prefix(schema)
+    imports_tf_path = f"{filename_prefix}_imports.tf"
+    generated_tf_path = f"{filename_prefix}_resources.tf"
     
     print(f"Writing import blocks to {imports_tf_path}...")
     with open(imports_tf_path, 'w') as f:

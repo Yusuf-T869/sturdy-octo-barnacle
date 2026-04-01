@@ -88,8 +88,8 @@ We use `uv` for lightning-fast Python environment management.
 
 The `bulk_import.py` script performs the following:
 1. Queries Snowflake for all Tables, Streams, Tasks, and Dynamic Tables in the specified schema.
-2. Generates `imports.tf` with the required `import` blocks.
-3. Runs `terraform plan -generate-config-out` once to produce `generated_resources.tf`.
+2. Generates `<schema>_imports.tf` with the required `import` blocks.
+3. Runs `terraform plan -generate-config-out` once to produce `<schema>_resources.tf`.
 4. **Automatically cleans conflicts** in the generated HCL (resolving `after`/`schedule` overlaps, etc.).
 5. Executes `terraform import` for each discovered resource.
 6. Comments out the `import` blocks after success to leave a clean state.
@@ -108,4 +108,4 @@ python3 bulk_import.py
 After the script finishes, `terraform plan` should report:
 **"No changes. Your infrastructure matches the configuration."**
 
-You can now review `generated_resources.tf` and move the code into your main configuration files as desired.
+You can now review `<schema>_resources.tf` and move the code into your main configuration files as desired.
