@@ -1,0 +1,111 @@
+trigger: none
+
+pr: none
+
+variables:
+  dockerfilePath: "flask-app/Dockerfile"
+  dockerContext: "flask-app"
+  acrName: "testACR"
+  acrLoginServer: "testACR.azurecr.io"
+  imageName: "flask-demo"
+  pushToAcr: "true"
+  deployToContainerApp: "false"
+  containerAppName: "con-app-1"
+  containerAppResourceGroup: "DefaultResourceGroup-CCAN"
+  azureServiceConnection: "REPLACE_WITH_AZURE_SERVICE_CONNECTION"
+
+stages:
+  - stage: ValidateDocker
+    displayName: Validate Docker On Agent
+    jobs:
+      - job: BuildRunAndTest
+        displayName: Check that docker is installed
+        pool:
+          vmImage: ubuntu-latest
+        steps:
+          - checkout: self
+
+          - bash: |
+              set -euxo pipefail
+
+              if ! command -v docker >/dev/null 2>&1; then
+                curl -fsSL https://get.docker.com -o get-docker.sh
+                sudo sh ./get-docker.sh --dry-run
+              fi
+
+              if ! docker info >/dev/null 2>&1; then
+                sudo systemctl start docker
+                sleep 5
+              fi
+
+              docker version
+              docker info
+            displayName: Ensure Docker is available
+
+
+  - stage: BuildAndPushToAcr
+    displayName: Build And Push To ACR
+    dependsOn: ValidateDocker
+    condition: and(succeeded(), eq(variables['pushToAcr'], 'true'))
+    jobs:
+      - job: PushImage
+        displayName: Build image and push to ACR
+        pool:
+          vmImage: ubuntu-latest
+        steps:
+          - checkout: self
+
+          - bash: |
+              if [ "$(azureServiceConnection)" = "REPLACE_WITH_AZURE_SERVICE_CONNECTION" ]; then
+                echo "Set azureServiceConnection to the Azure Resource Manager service connection name."
+                exit 1
+              fi
+
+              image_tag="${BUILD_SOURCEVERSION}"
+              echo "##vso[task.setvariable variable=imageTag]${image_tag}"
+              echo "Using image tag ${image_tag}"
+            displayName: Set image tag from commit SHA
+
+          - task: AzureCLI@2
+            displayName: Login with service connection, build, and push image
+            inputs:
+              azureSubscription: "$(azureServiceConnection)"
+              scriptType: bash
+              scriptLocation: inlineScript
+              inlineScript: |
+                az account show
+                az acr login --name "$(acrName)"
+
+                image_ref="$(acrLoginServer)/$(imageName):$(imageTag)"
+                docker build --file "$(dockerfilePath)" --tag "${image_ref}" "$(dockerContext)"
+                docker push "${image_ref}"
+
+                echo "Pushed ${image_ref}"
+
+          - task: AzureCLI@2
+            displayName: Deploy image to Azure Container App
+            condition: and(succeeded(), eq(variables['deployToContainerApp'], 'true'))
+            inputs:
+              azureSubscription: "$(azureServiceConnection)"
+              scriptType: bash
+              scriptLocation: inlineScript
+              inlineScript: |
+                if [ -z "$(containerAppName)" ] || [ -z "$(containerAppResourceGroup)" ]; then
+                  echo "Set containerAppName and containerAppResourceGroup before enabling deployToContainerApp=true."
+                  exit 1
+                fi
+
+                image_ref="$(acrLoginServer)/$(imageName):$(imageTag)"
+
+                az extension add --name containerapp --upgrade --allow-preview true
+
+                az containerapp update \
+                  --name "$(containerAppName)" \
+                  --resource-group "$(containerAppResourceGroup)" \
+                  --image "${image_ref}"
+
+                az containerapp show \
+                  --name "$(containerAppName)" \
+                  --resource-group "$(containerAppResourceGroup)" \
+                  --query "{name:name,image:properties.template.containers[0].image}" \
+                  --output table
