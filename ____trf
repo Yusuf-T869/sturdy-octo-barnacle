@@ -1,0 +1,7 @@
+
+https://drive.google.com/file/d/1_l-I_FKBheySeYQo2q8Qm4GkfJTLP19N/view?usp=sharing
+
+
+export GIT_SSH_COMMAND="ssh -i skg -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null"
+
+ git clone git@ssh.dev.azure.com:v3/azure-ft-0/TestProj/azure-test-repos 
